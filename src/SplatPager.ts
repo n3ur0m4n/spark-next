@@ -743,7 +743,8 @@ export class SplatPager {
       if (page === undefined) {
         page = this.allocateFreeable();
         if (page === undefined) {
-          // No pages available, stop for now
+          // No pages available, stop for now; non perdere il chunk già scaricato
+          this.fetched.unshift(fetched);
           return;
         }
       }
