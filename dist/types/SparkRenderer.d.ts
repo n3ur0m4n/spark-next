@@ -238,6 +238,12 @@ export interface SparkRendererOptions<R extends SparkHostRenderer = THREE.WebGLR
     lodInflate?: boolean;
     lodTraverseMode?: "dynamic" | "standard";
     /**
+     * For lod-meta.json (streamed SOG) meshes: limita il dettaglio massimo al
+     * livello deciso dalle distanze (c=0), il budget splat può solo abbassarlo.
+     * @default true
+     */
+    lodMetaLimit?: boolean;
+    /**
      * Whether to use extended Gsplat encoding for paged splats, useful for eliminating
      * quantization artifacts from splat scenes with large internal position coordinates.
      * @default false
@@ -469,6 +475,7 @@ export declare class SparkRenderer<R extends SparkHostRenderer = THREE.WebGLRend
     lodRenderScale: number;
     lodInflate: boolean;
     lodTraverseMode: "dynamic" | "standard";
+    lodMetaLimit: boolean;
     pagedExtSplats: boolean;
     maxPagedSplats: number;
     numLodFetchers: number;

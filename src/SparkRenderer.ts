@@ -288,6 +288,12 @@ export interface SparkRendererOptions<
   lodInflate?: boolean;
   lodTraverseMode?: "dynamic" | "standard";
   /**
+   * For lod-meta.json (streamed SOG) meshes: limita il dettaglio massimo al
+   * livello deciso dalle distanze (c=0), il budget splat può solo abbassarlo.
+   * @default true
+   */
+  lodMetaLimit?: boolean;
+  /**
    * Whether to use extended Gsplat encoding for paged splats, useful for eliminating
    * quantization artifacts from splat scenes with large internal position coordinates.
    * @default false
@@ -584,6 +590,7 @@ export class SparkRenderer<
   lodRenderScale: number;
   lodInflate: boolean;
   lodTraverseMode: "dynamic" | "standard";
+  lodMetaLimit: boolean;
   pagedExtSplats: boolean;
   maxPagedSplats: number;
   numLodFetchers: number;
@@ -821,6 +828,7 @@ export class SparkRenderer<
     this.lodRenderScale = options.lodRenderScale ?? 1.0;
     this.lodInflate = options.lodInflate ?? false;
     this.lodTraverseMode = options.lodTraverseMode ?? "standard";
+    this.lodMetaLimit = options.lodMetaLimit ?? true;
     this.pagedExtSplats = options.pagedExtSplats ?? false;
     const defaultPages = isMobile() ? (isIos() ? 96 : 128) : 256;
     this.maxPagedSplats = options.maxPagedSplats ?? defaultPages * 65536;
@@ -1903,7 +1911,7 @@ export class SparkRenderer<
         lodMeshes.some(
           (m, i) =>
             m !== this.lodMeshes[i].mesh ||
-            m.version > this.lodMeshes[i].version,
+            m.version - m.introDotsVersion > this.lodMeshes[i].version,
         )
       ) {
         this.lodDirty = true;
@@ -1911,9 +1919,10 @@ export class SparkRenderer<
       }
     }
 
+    // L'animazione introDots rigenera gli splat ma non riseleziona il LoD
     this.lodMeshes = lodMeshes.map((mesh) => ({
       mesh,
-      version: mesh.version + 1,
+      version: mesh.version - mesh.introDotsVersion + 1,
     }));
 
     // if (!this.lodDirty && lodMeshes.length === 0 && this.lodIds.size === 0) {
@@ -2364,6 +2373,7 @@ export class SparkRenderer<
           },
           indicesCache: ready.map((mesh) => mesh.paged?.lodMetaIndices),
           fovScale: this.lodMetaFovScale,
+          lodLimit: this.lodMetaLimit,
         });
         if (selection.rangeChanged) {
           // bootstrap finito (tutto il livello grossolano caricato): range completo

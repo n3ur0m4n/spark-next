@@ -82,7 +82,7 @@ export interface LodMetaResult<S> {
  * già residenti; se il voluto non è pronto resta il livello mostrato prima.
  * `residentPage(splats, file)` = pagina del file già caricata, o -1.
  */
-export declare function selectLodMeta<S>({ instances, maxSplats, maxFiles, residentPage, indicesCache, fovScale, }: {
+export declare function selectLodMeta<S>({ instances, maxSplats, maxFiles, residentPage, indicesCache, fovScale, lodLimit, }: {
     instances: LodMetaInstance<S>[];
     maxSplats: number;
     maxFiles: number;
@@ -91,5 +91,7 @@ export declare function selectLodMeta<S>({ instances, maxSplats, maxFiles, resid
     indicesCache?: (Uint32Array | undefined)[];
     /** compensazione FOV, vedi lodMetaFovScale */
     fovScale?: number;
+    /** limita il dettaglio massimo a c=0 (come radix budgetMode "limit"): il budget può solo abbassarlo, mai superarlo */
+    lodLimit?: boolean;
 }): LodMetaResult<S>;
 export {};

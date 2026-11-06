@@ -261,6 +261,7 @@ export function selectLodMeta<S>({
   residentPage,
   indicesCache,
   fovScale = 1,
+  lodLimit = false,
 }: {
   instances: LodMetaInstance<S>[];
   maxSplats: number;
@@ -270,6 +271,8 @@ export function selectLodMeta<S>({
   indicesCache?: (Uint32Array | undefined)[];
   /** compensazione FOV, vedi lodMetaFovScale */
   fovScale?: number;
+  /** limita il dettaglio massimo a c=0 (come radix budgetMode "limit"): il budget può solo abbassarlo, mai superarlo */
+  lodLimit?: boolean;
 }): LodMetaResult<S> {
   const tables = instances.map(({ data }) => lodTable(data));
   const dists = instances.map(({ data, viewToObject }) =>
@@ -333,6 +336,7 @@ export function selectLodMeta<S>({
     }
   }
   let c = maxA + 1; // tutto al livello più fine
+  if (lodLimit) c = Math.min(c, 0); // dettaglio max c=0, il budget può solo abbassarlo
   if (instances.length > 0 && !fits(c)) {
     let lo = minA - maxK; // tutto al livello più grossolano
     let hi = c;

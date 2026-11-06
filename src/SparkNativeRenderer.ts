@@ -633,6 +633,7 @@ export class SparkNativeRenderer {
         ],
         numSh,
         recolor: node.context.recolor.value.toArray(),
+        introDots: node.introDots.active ? node.introDots.time : -1,
         edits: this.meshEdits(node),
       });
       next.mapping.push({
@@ -657,7 +658,8 @@ export class SparkNativeRenderer {
       owner.accumExtSplats,
       visible.map((node, i) => [
         node.uuid,
-        node.version,
+        // introDots.time cambia solo la firma (rigenera), non il mapping (no sort)
+        node.version - node.introDotsVersion,
         node.mappingVersion,
         counts[i],
       ]),
@@ -680,7 +682,8 @@ export class SparkNativeRenderer {
         mesh.shMaxOpacity,
       ]),
     ]);
-    const signature = view + mapping;
+    const signature =
+      view + mapping + JSON.stringify(meshes.map((mesh) => mesh.introDots));
     // A stale ordering still gets its final sort once the view settles.
     if (signature === this.currentSignature && !this.orderingStale) {
       next.dispose();
@@ -885,6 +888,7 @@ export class SparkNativeRenderer {
         pager.curSh,
       ),
       recolor: node.context.recolor.value.toArray(),
+      introDots: node.introDots.active ? node.introDots.time : -1,
       pager,
       edits: this.meshEdits(node),
     };

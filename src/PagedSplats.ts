@@ -12,6 +12,14 @@ import type { SplatSource } from "./SplatMesh";
 import type { SplatPager } from "./SplatPager";
 import { workerPool } from "./SplatWorker";
 import {
+  type SsogEntry,
+  type SsogRead,
+  httpSsogRead,
+  isSsogUrl,
+  readSsogEntry,
+  readSsogIndex,
+} from "./SsogArchive";
+import {
   DEFAULT_SPLAT_ENCODING,
   LN_SCALE_MAX,
   LN_SCALE_MIN,
@@ -22,6 +30,18 @@ import {
 import * as dyno from "./dyno";
 import { decodeExtSplat, unpackSplat, uploadU32DataTextureRows } from "./utils";
 import * as wasm from "./wasm";
+
+// Diagnostica [lod-diag] per il caricamento dei chunk .ssog paged (vedi fetchDecodeChunk sotto);
+// cap a 2000 righe totali per non intasare il log su caricamenti molto lunghi.
+let lodDiagLineCount = 0;
+function lodDiagLine(
+  label: string,
+  chunk: number,
+  data?: Record<string, unknown>,
+) {
+  if (lodDiagLineCount++ >= 2000) return;
+  console.warn("[lod-diag]", label, "chunk", chunk, data ?? "");
+}
 
 /**
  * Options for constructing {@link PagedSplats}. At least one source needs to be provided.
@@ -66,7 +86,7 @@ export interface PagedSplatsOptions {
    * @default 3
    */
   maxSh?: number;
-  /** Formato LoD PlayCanvas "streamed SOG" (default: url che finisce con lod-meta.json) */
+  /** Formato LoD PlayCanvas "streamed SOG" (default: url che finisce con lod-meta.json o .ssog) */
   lodMeta?: boolean;
 }
 
@@ -92,6 +112,8 @@ export class PagedSplats implements SplatSource {
   lodMetaPromise?: Promise<LodMetaData>;
   lodMetaIndices?: Uint32Array;
   lodMetaError?: unknown;
+  // .ssog: archivio ZIP unico, entry lette a Range; prefix = url archivio + "/"
+  ssog?: { read: SsogRead; index: Map<string, SsogEntry>; prefix: string };
 
   readonly dynoNumSplats: dyno.DynoInt<"numSplats">;
   readonly dynoIndices: dyno.DynoUsampler2D<"indices", THREE.DataTexture>;
@@ -133,7 +155,9 @@ export class PagedSplats implements SplatSource {
       !options.fileBytes &&
       !options.fetchSource &&
       !!options.rootUrl &&
-      (options.lodMeta ?? (!fileType && isLodMetaUrl(options.rootUrl)));
+      (options.lodMeta ??
+        (!fileType &&
+          (isLodMetaUrl(options.rootUrl) || isSsogUrl(options.rootUrl))));
     if (options.fileBytes) {
       fileType ??= getSplatFileType(options.fileBytes);
       this.fetchSource = new FileBytesPagedSplatsFetcher(options.fileBytes);
@@ -232,15 +256,34 @@ export class PagedSplats implements SplatSource {
         fetcher.rootUrl,
         globalThis.location.href,
       ).toString();
-      const bytes = await fetcher.fetchRangeImpl({
-        url: baseUrl,
-        requestHeader: fetcher.requestHeader,
-        withCredentials: fetcher.withCredentials,
-        signal: this.abortController.signal,
-      });
+      let bytes: Uint8Array;
+      let lodMetaUrl = baseUrl;
+      if (isSsogUrl(baseUrl)) {
+        // Archivio unico: i filenames di lod-meta.json diventano "<archivio>/<path entry>"
+        const read = httpSsogRead(
+          baseUrl,
+          {
+            headers: fetcher.requestHeader,
+            credentials: fetcher.withCredentials ? "include" : "same-origin",
+          },
+          this.abortController.signal,
+        );
+        const index = await readSsogIndex(read);
+        const prefix = `${baseUrl}/`;
+        this.ssog = { read, index, prefix };
+        lodMetaUrl = `${prefix}lod-meta.json`;
+        bytes = await this.readSsog(lodMetaUrl);
+      } else {
+        bytes = await fetcher.fetchRangeImpl({
+          url: baseUrl,
+          requestHeader: fetcher.requestHeader,
+          withCredentials: fetcher.withCredentials,
+          signal: this.abortController.signal,
+        });
+      }
       this.lodMeta = parseLodMeta(
         JSON.parse(new TextDecoder().decode(bytes)),
-        baseUrl,
+        lodMetaUrl,
       );
       this.pager?.onUpdate?.();
       return this.lodMeta;
@@ -254,7 +297,18 @@ export class PagedSplats implements SplatSource {
     return this.lodMetaPromise;
   }
 
-  // Scarica meta.json + webp del file SOG (cartella) del chunk
+  // Entry dell'archivio .ssog a partire dall'url virtuale "<archivio>/<path>"
+  readSsog(url: string): Promise<Uint8Array> {
+    const ssog = this.ssog as NonNullable<typeof this.ssog>;
+    const path = decodeURIComponent(url.slice(ssog.prefix.length));
+    const entry = ssog.index.get(path);
+    if (!url.startsWith(ssog.prefix) || !entry) {
+      throw new Error(`ssog: entry "${path}" assente nell'archivio`);
+    }
+    return readSsogEntry(ssog.read, entry);
+  }
+
+  // Scarica meta.json + webp del file SOG (cartella o archivio .ssog) del chunk
   async fetchSogsFiles(chunk: number) {
     const { fileUrls } = await this.getLodMeta();
     if (chunk < 0 || chunk >= fileUrls.length) {
@@ -264,12 +318,14 @@ export class PagedSplats implements SplatSource {
     }
     const fetcher = this.fetchSource as UrlPagedSplatsFetcher;
     const fetchUrl = (url: string) =>
-      fetcher.fetchRangeImpl({
-        url,
-        requestHeader: fetcher.requestHeader,
-        withCredentials: fetcher.withCredentials,
-        signal: this.abortController.signal,
-      });
+      this.ssog
+        ? this.readSsog(url)
+        : fetcher.fetchRangeImpl({
+            url,
+            requestHeader: fetcher.requestHeader,
+            withCredentials: fetcher.withCredentials,
+            signal: this.abortController.signal,
+          });
     const metaUrl = fileUrls[chunk];
     const meta = await fetchUrl(metaUrl);
     const json = JSON.parse(new TextDecoder().decode(meta));
@@ -292,7 +348,12 @@ export class PagedSplats implements SplatSource {
   }
 
   async fetchDecodeChunk(chunk: number) {
-    let decodeBytes = undefined;
+    // Diagnostica [lod-diag]: fetch/decodifica di ogni chunk pagina (vedi desktop.log), per capire
+    // dove si blocca la pipeline sui .ssog paged (stallo sul grezzo, caricamento a blocchi che poi
+    // si ferma). Non throttled: un chunk fermo in fetch o decode senza mai loggare "end" è il sintomo.
+    lodDiagLine("fetch start", chunk);
+    const fetchStart = performance.now();
+    let decodeBytes: Uint8Array | undefined = undefined;
     const sogs = this.lodMetaPromise
       ? await this.fetchSogsFiles(chunk)
       : undefined;
@@ -329,6 +390,36 @@ export class PagedSplats implements SplatSource {
       );
     }
 
+    const fetchBytes = sogs
+      ? sogs.meta.length + sogs.files.reduce((n, f) => n + f.length, 0)
+      : (decodeBytes?.length ?? 0);
+    lodDiagLine("fetch end", chunk, {
+      ms: Math.round(performance.now() - fetchStart),
+      bytes: fetchBytes,
+    });
+
+    lodDiagLine("decode start", chunk);
+    const decodeStart = performance.now();
+    try {
+      const decodeResult = await this.decodeChunk(chunk, sogs, decodeBytes);
+      lodDiagLine("decode end", chunk, {
+        ms: Math.round(performance.now() - decodeStart),
+      });
+      return decodeResult;
+    } catch (error) {
+      lodDiagLine("decode error", chunk, {
+        ms: Math.round(performance.now() - decodeStart),
+        error: String(error),
+      });
+      throw error;
+    }
+  }
+
+  private async decodeChunk(
+    chunk: number,
+    sogs: Awaited<ReturnType<PagedSplats["fetchSogsFiles"]>> | undefined,
+    decodeBytes: Uint8Array | undefined,
+  ) {
     return await workerPool.withWorker(async (worker) => {
       if (!this.pager) {
         throw new Error("PagedSplats.pager not set");

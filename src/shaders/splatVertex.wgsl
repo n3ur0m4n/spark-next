@@ -9,7 +9,6 @@
 // Pipeline-overridable constants
 // ============================================================================
 
-override PREMULTIPLIED_ALPHA: bool = false;
 override HALVED_ALPHA: bool = true;
 
 // ============================================================================

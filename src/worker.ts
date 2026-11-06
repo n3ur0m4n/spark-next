@@ -85,13 +85,22 @@ async function onMessage(event: MessageEvent) {
     const result = await handler(args, { sendStatus });
     self.postMessage({ id, result }, { transfer: getTransferable(result) });
   } catch (error) {
-    console.warn(`Worker error: ${error}`);
+    console.warn(`[lod-diag] Worker error (rpc ${String(name)}): ${error}`);
     self.postMessage(
       { id, error, trapped: error instanceof WebAssembly.RuntimeError },
       { transfer: getTransferable(error) },
     );
   }
 }
+
+// Diagnostica [lod-diag]: eccezioni/rejection non gestite dentro il worker (fuori da onMessage),
+// per capire se la pipeline fetch/decodifica dei chunk .ssog si blocca per un errore silenzioso.
+self.addEventListener("error", (event) => {
+  console.warn("[lod-diag] Worker uncaught error:", event.message, event.error);
+});
+self.addEventListener("unhandledrejection", (event) => {
+  console.warn("[lod-diag] Worker unhandled rejection:", event.reason);
+});
 
 function sortSplats16({
   numSplats,

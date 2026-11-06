@@ -15,6 +15,8 @@ struct GenerateUniforms {
     recolor: vec4f,
 // x: SplatEdits.numEdits, y: SplatEdits.numSdfs (sdfData follows editData).
 editCounts: vec4u,
+// x: SplatMesh.introDots time in seconds, negative when off.
+introDots: vec4f,
 };
 @group(0) @binding(0) var<uniform> frame: GenerateUniforms;
 // Bindings 1-3 (and 8-10 for paged sources) and the load*() accessors come
@@ -145,6 +147,23 @@ fn applyEdits(center: ptr<function, vec3f>, rgba: ptr<function, vec4f>) {
     }
 }
 
+// Native counterpart of SplatMesh.ts introDotsGsplat (smooth value noise).
+fn introDotsHash(q: vec3f) -> vec3f {
+    let p = fract(q * 0.3183099 + 0.1) * 17.0;
+    return fract(vec3f(p.x * p.y * p.z, p.x + p.y * p.z, p.x * p.y + p.z));
+}
+
+fn introDotsNoise(p: vec3f) -> vec3f {
+    let i = floor(p);
+    var f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    let x0 = mix(introDotsHash(i), introDotsHash(i + vec3f(1.0, 0.0, 0.0)), f.x);
+    let x1 = mix(introDotsHash(i + vec3f(0.0, 1.0, 0.0)), introDotsHash(i + vec3f(1.0, 1.0, 0.0)), f.x);
+    let x2 = mix(introDotsHash(i + vec3f(0.0, 0.0, 1.0)), introDotsHash(i + vec3f(1.0, 0.0, 1.0)), f.x);
+    let x3 = mix(introDotsHash(i + vec3f(0.0, 1.0, 1.0)), introDotsHash(i + vec3f(1.0, 1.0, 1.0)), f.x);
+    return mix(mix(x0, x1, f.y), mix(x2, x3, f.y), f.z);
+}
+
 @compute @workgroup_size(256)
 fn generate(@builtin(workgroup_id) group: vec3u,
             @builtin(local_invocation_id) local: vec3u,
@@ -195,6 +214,11 @@ fn generate(@builtin(workgroup_id) group: vec3u,
         splat.rgba = vec4f(splat.rgba.rgb + rgb, splat.rgba.a);
     }
     splat.rgba *= frame.recolor;
+    // Intro dots in object space, before the mesh transform (as in WebGL).
+    if (frame.introDots.x >= 0.0) {
+        splat.center += 0.1 * introDotsNoise(splat.center * 2.0 + frame.introDots.x * 0.5);
+        splat.scales = vec3f(0.015);
+    }
     var center = quatVec(frame.rotation, splat.center * frame.translationScale.w) + frame.translationScale.xyz;
     // SplatMesh applies RGBA/displace edits in world space after recoloring.
     applyEdits(&center, &splat.rgba);

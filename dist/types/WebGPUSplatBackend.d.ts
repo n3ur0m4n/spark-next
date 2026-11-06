@@ -54,7 +54,7 @@ export declare class WebGPUSplatBackend {
     halvedAlpha: boolean;
     /**
      * Mirrors SparkRenderer's public `premultipliedAlpha` option. Drives both the
-     * `PREMULTIPLIED_ALPHA` shader constant and the blend descriptor, so WebGPU
+     * fragment `PREMULTIPLIED_ALPHA` shader constant and the blend descriptor, so WebGPU
      * composites the same way WebGL does when an app opts out.
      */
     premultipliedAlpha: boolean;

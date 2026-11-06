@@ -321,6 +321,17 @@ export class SplatMesh extends SplatGenerator {
   showLodPage?: number;
   showLodPageDyno = new DynoInt({ value: 0 });
 
+  // Intro "floating dots": while active every splat shrinks to a tiny dot and
+  // its center drifts by an animated noise driven by time (seconds). Works on
+  // both WebGL (generator dyno) and native WebGPU (generateSplats.wgsl).
+  // Inactive = not part of the generator, no per-frame cost.
+  introDots = { active: false, time: 0 };
+  private introDotsTime = new DynoFloat({ value: 0 });
+  private introDotsBuilt = false;
+  // Version bumps caused only by introDots.time: the LoD selection and the
+  // native sort mapping ignore them (version - introDotsVersion).
+  introDotsVersion = 0;
+
   private sourceFrameUpdate = this.frameUpdate;
   private sourceGenerator?: GsplatGenerator;
 
@@ -740,6 +751,10 @@ export class SplatMesh extends SplatGenerator {
           }
         }
 
+        if (this.introDotsBuilt) {
+          gsplat = introDotsGsplat(gsplat, this.introDotsTime);
+        }
+
         // Transform from object to world-space
         gsplat = transform.applyGsplat(gsplat);
 
@@ -1022,6 +1037,20 @@ export class SplatMesh extends SplatGenerator {
       }
     }
 
+    if (this.introDots.active !== this.introDotsBuilt) {
+      this.introDotsBuilt = this.introDots.active;
+      this.generatorDirty = true;
+    }
+    let introOnly = false;
+    if (
+      this.introDotsBuilt &&
+      this.introDotsTime.value !== this.introDots.time
+    ) {
+      this.introDotsTime.value = this.introDots.time;
+      introOnly = !updated && !this.generatorDirty;
+      updated = true;
+    }
+
     if (this.generatorDirty) {
       this.constructGenerator(this.context);
       this.generatorDirty = false;
@@ -1030,6 +1059,7 @@ export class SplatMesh extends SplatGenerator {
 
     if (updated) {
       this.updateVersion();
+      if (introOnly) this.introDotsVersion += 1;
     }
 
     this.onFrame?.({ mesh: this, time, deltaTime });
@@ -1398,6 +1428,45 @@ export function maybeInjectSplatRgba(
         if (!${inputs.enableLod} && (${inputs.index} >= 0) && (${inputs.index} < ${inputs.rgba}.count)) {
           ${outputs.gsplat}.rgba = texelFetch(${inputs.rgba}.texture, splatTexCoord(${inputs.index}), 0);
         }
+      `),
+  }).outputs.gsplat;
+}
+
+// Intro "floating dots" (SplatMesh.introDots): object-space center drift by a
+// smooth value noise animated with t, scales collapsed to a tiny dot. Mirrored
+// in shaders/generateSplats.wgsl (introDots) for the native WebGPU renderer.
+const defineIntroDots = unindentLines(/* glsl */ `
+  vec3 introDotsHash(vec3 p) {
+    p = fract(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return fract(vec3(p.x * p.y * p.z, p.x + p.y * p.z, p.x * p.y + p.z));
+  }
+  vec3 introDotsNoise(vec3 p) {
+    vec3 i = floor(p);
+    vec3 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    vec3 x0 = mix(introDotsHash(i), introDotsHash(i + vec3(1, 0, 0)), f.x);
+    vec3 x1 = mix(introDotsHash(i + vec3(0, 1, 0)), introDotsHash(i + vec3(1, 1, 0)), f.x);
+    vec3 x2 = mix(introDotsHash(i + vec3(0, 0, 1)), introDotsHash(i + vec3(1, 0, 1)), f.x);
+    vec3 x3 = mix(introDotsHash(i + vec3(0, 1, 1)), introDotsHash(i + vec3(1, 1, 1)), f.x);
+    return mix(mix(x0, x1, f.y), mix(x2, x3, f.y), f.z);
+  }
+`).join("\n");
+
+export function introDotsGsplat(
+  gsplat: DynoVal<typeof Gsplat>,
+  t: DynoVal<"float">,
+): DynoVal<typeof Gsplat> {
+  return dyno({
+    inTypes: { gsplat: Gsplat, t: "float" },
+    outTypes: { gsplat: Gsplat },
+    inputs: { gsplat, t },
+    globals: () => [defineIntroDots],
+    statements: ({ inputs, outputs }) =>
+      unindentLines(/* glsl */ `
+        ${outputs.gsplat} = ${inputs.gsplat};
+        ${outputs.gsplat}.center += 0.1 * introDotsNoise(${inputs.gsplat}.center * 2.0 + ${inputs.t} * 0.5);
+        ${outputs.gsplat}.scales = vec3(0.015);
       `),
   }).outputs.gsplat;
 }

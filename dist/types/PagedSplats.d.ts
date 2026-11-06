@@ -3,6 +3,7 @@ import { type LodMetaData } from "./LodMeta";
 import { type PagedSplatsFetcher } from "./PagedSplatsFetcher";
 import type { SplatSource } from "./SplatMesh";
 import type { SplatPager } from "./SplatPager";
+import { type SsogEntry, type SsogRead } from "./SsogArchive";
 import { type RadMeta, type SplatEncoding, SplatFileType } from "./defines";
 import * as dyno from "./dyno";
 /**
@@ -48,7 +49,7 @@ export interface PagedSplatsOptions {
      * @default 3
      */
     maxSh?: number;
-    /** Formato LoD PlayCanvas "streamed SOG" (default: url che finisce con lod-meta.json) */
+    /** Formato LoD PlayCanvas "streamed SOG" (default: url che finisce con lod-meta.json o .ssog) */
     lodMeta?: boolean;
 }
 export declare class PagedSplats implements SplatSource {
@@ -72,6 +73,11 @@ export declare class PagedSplats implements SplatSource {
     lodMetaPromise?: Promise<LodMetaData>;
     lodMetaIndices?: Uint32Array;
     lodMetaError?: unknown;
+    ssog?: {
+        read: SsogRead;
+        index: Map<string, SsogEntry>;
+        prefix: string;
+    };
     readonly dynoNumSplats: dyno.DynoInt<"numSplats">;
     readonly dynoIndices: dyno.DynoUsampler2D<"indices", THREE.DataTexture>;
     readonly rgbMinMaxLnScaleMinMax: dyno.DynoVec4<THREE.Vector4, "rgbMinMaxLnScaleMinMax">;
@@ -87,12 +93,14 @@ export declare class PagedSplats implements SplatSource {
         chunksStart: number;
     }>;
     getLodMeta(): Promise<LodMetaData>;
+    readSsog(url: string): Promise<Uint8Array>;
     fetchSogsFiles(chunk: number): Promise<{
         meta: Uint8Array<ArrayBufferLike>;
         names: string[];
         files: Uint8Array<ArrayBufferLike>[];
     }>;
     fetchDecodeChunk(chunk: number): Promise<import("./defines").ExtResult | import("./defines").PackedResult>;
+    private decodeChunk;
     /** Draw nothing until the next update(), keeping the indices texture allocated. */
     clear(): void;
     update(numSplats: number, indices: Uint32Array): void;

@@ -27,6 +27,8 @@ export type NativeMeshGeneration = {
   shMaxOpacity: number[];
   numSh: number;
   recolor: number[];
+  /** SplatMesh.introDots time in seconds, negative when off. */
+  introDots: number;
   /** Paged source: read the pager's page textures; primary/secondary/sh are unused. */
   pager?: SplatPager;
   /** SplatEdits.editData (numEdits uvec4) followed by its sdfData (8 uvec4 per SDF). */
@@ -320,7 +322,7 @@ export class WebGPUGeneration {
       if (!state) {
         state = {
           uniform: this.buffer(
-            192,
+            208,
             GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
             "native-mesh-uniform",
           ),
@@ -378,7 +380,7 @@ export class WebGPUGeneration {
           bytes,
         );
       }
-      const data = new ArrayBuffer(192);
+      const data = new ArrayBuffer(208);
       const u32 = new Uint32Array(data);
       const f32 = new Float32Array(data);
       u32.set([
@@ -402,6 +404,7 @@ export class WebGPUGeneration {
       if (source) u32.set(source.shOffsets, 36);
       f32.set(mesh.recolor, 40);
       if (edits) u32.set([edits.numEdits, edits.numSdfs], 44);
+      f32[48] = mesh.introDots;
       this.device.queue.writeBuffer(state.uniform, 0, data);
       const pipeline = paged ? this.getPagedPipeline() : this.pipeline;
       // Sparse binding numbers: paged textures occupy 8-10 only when paged.

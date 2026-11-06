@@ -142,6 +142,13 @@ export declare class SplatMesh extends SplatGenerator {
     coneFoveate?: number;
     showLodPage?: number;
     showLodPageDyno: DynoInt<string>;
+    introDots: {
+        active: boolean;
+        time: number;
+    };
+    private introDotsTime;
+    private introDotsBuilt;
+    introDotsVersion: number;
     private sourceFrameUpdate;
     private sourceGenerator?;
     hasNativeSourceGenerator(): boolean;
@@ -173,4 +180,5 @@ export declare class SplatMesh extends SplatGenerator {
 }
 export declare function maybeLookupIndex(lodIndices: DynoUsampler2D<"lodIndices", THREE.DataTexture>, index: DynoVal<"int">, numSplats: DynoVal<"int">, enableLod: DynoVal<"bool">, showLodPage: DynoVal<"int">): DynoVal<"int">;
 export declare function maybeInjectSplatRgba(gsplat: DynoVal<typeof Gsplat>, rgba: DynoVal<typeof TRgbaArray>, index: DynoVal<"int">, enableLod: DynoVal<"bool">): DynoVal<typeof Gsplat>;
+export declare function introDotsGsplat(gsplat: DynoVal<typeof Gsplat>, t: DynoVal<"float">): DynoVal<typeof Gsplat>;
 export declare const emptyLodIndices: THREE.DataTexture;

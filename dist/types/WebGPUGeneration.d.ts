@@ -20,6 +20,8 @@ export type NativeMeshGeneration = {
     shMaxOpacity: number[];
     numSh: number;
     recolor: number[];
+    /** SplatMesh.introDots time in seconds, negative when off. */
+    introDots: number;
     /** Paged source: read the pager's page textures; primary/secondary/sh are unused. */
     pager?: SplatPager;
     /** SplatEdits.editData (numEdits uvec4) followed by its sdfData (8 uvec4 per SDF). */
