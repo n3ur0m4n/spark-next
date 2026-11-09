@@ -971,6 +971,13 @@ export class SparkRenderer<
       stochastic: { value: false },
       // Number of drawn instances, to reverse the ordering when stochastic
       instanceCount: { value: 0 },
+      // Highlight sferico nello shader di disegno (niente rigenerazione splat):
+      // centro in mondo, colore rgb + intensità al centro (rampa lineare a 0
+      // sul raggio), raggio 0 = spento. highlightViewCenter: solo WebGPU nativo.
+      highlightCenter: { value: new THREE.Vector3() },
+      highlightColor: { value: new THREE.Vector4() },
+      highlightRadius: { value: 0 },
+      highlightViewCenter: { value: new THREE.Vector3() },
     };
     return uniforms;
   }
@@ -2658,13 +2665,21 @@ export class SparkRenderer<
    * its existing background updates. Neither route waits for GPU completion.
    * `target` renders the full composite (Three.js objects and splats, with
    * depth) into that render target instead of the canvas.
+   * `update: false` (native WebGPU) draws the last committed generation with
+   * no LoD/sort update for this camera: for crops of the current view (e.g. a
+   * magnifier), whose camera and small renderSize would otherwise replace the
+   * canvas generation with a coarser LoD selection.
    */
   async renderAsync(
     scene: THREE.Scene,
     camera: THREE.Camera,
-    { target = null }: { target?: THREE.RenderTarget | null } = {},
+    {
+      target = null,
+      update = true,
+    }: { target?: THREE.RenderTarget | null; update?: boolean } = {},
   ): Promise<void> {
-    if (this.native) return this.native.renderAsync(scene, camera, { target });
+    if (this.native)
+      return this.native.renderAsync(scene, camera, { target, update });
     if (!target) return this.render(scene, camera);
     const renderer = this.requireWebGLRenderer();
     const previous = renderer.getRenderTarget();

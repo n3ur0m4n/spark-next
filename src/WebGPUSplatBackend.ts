@@ -209,7 +209,7 @@ export class WebGPUSplatBackend {
   private nativeSortUniform: GPUBuffer | null = null;
 
   // Reusable typed arrays for uniform writes
-  private sparkUniformData = new ArrayBuffer(208);
+  private sparkUniformData = new ArrayBuffer(224);
   private fragUniformData = new ArrayBuffer(48);
 
   private readonly onUncapturedError = (event: Event): void => {
@@ -226,10 +226,10 @@ export class WebGPUSplatBackend {
   constructor(device: GPUDevice) {
     this.device = device;
 
-    // SparkUniforms: 208 bytes (see struct layout in splatVertex.wgsl)
+    // SparkUniforms: 224 bytes (see struct layout in splatVertex.wgsl)
     this.sparkUniformBuffer = device.createBuffer({
       label: "spark-uniforms",
-      size: 208,
+      size: 224,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
@@ -576,6 +576,11 @@ export class WebGPUSplatBackend {
       near: { value: number };
       far: { value: number };
       falloff: { value: number };
+      highlightViewCenter: { value: { x: number; y: number; z: number } };
+      highlightColor: {
+        value: { x: number; y: number; z: number; w: number };
+      };
+      highlightRadius: { value: number };
     },
     projectionMatrix: { elements: number[] },
     isOrthographic: boolean,
@@ -642,6 +647,17 @@ export class WebGPUSplatBackend {
     f32[38] = uniforms.focalAdjustment.value;
     u32[39] = isOrthographic ? 1 : 0;
     u32[43] = uniforms.lodInflate.value ? 1 : 0;
+    // Highlight sferico: centro view space (40-42), colore+intensità (44-47), raggio (52)
+    const hc = uniforms.highlightViewCenter.value;
+    f32[40] = hc.x;
+    f32[41] = hc.y;
+    f32[42] = hc.z;
+    const hcol = uniforms.highlightColor.value;
+    f32[44] = hcol.x;
+    f32[45] = hcol.y;
+    f32[46] = hcol.z;
+    f32[47] = hcol.w;
+    f32[52] = uniforms.highlightRadius.value;
     // splatEncoding: vec4f at offset 192 (float index 48)
     f32[48] = this.splatEncoding[0]; // rgbMin
     f32[49] = this.splatEncoding[1]; // rgbMax
@@ -1718,7 +1734,7 @@ export class WebGPUSplatBackend {
   pickUniformBuffers(): UniformBuffers {
     if (!this.pickUniforms) {
       this.pickUniforms = {
-        spark: this.uniformBuffer("spark-pick-uniforms", 208),
+        spark: this.uniformBuffer("spark-pick-uniforms", 224),
         proj: this.uniformBuffer("spark-pick-proj-matrix", 64),
         frag: this.uniformBuffer("spark-pick-frag-uniforms", 48),
       };

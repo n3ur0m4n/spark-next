@@ -256,7 +256,10 @@ export class SparkNativeRenderer {
   renderAsync(
     scene: THREE.Scene,
     camera: THREE.Camera,
-    { target = null }: { target?: THREE.RenderTarget | null } = {},
+    {
+      target = null,
+      update = true,
+    }: { target?: THREE.RenderTarget | null; update?: boolean } = {},
   ): Promise<void> {
     if (this.disposed)
       return Promise.reject(new Error("SparkRenderer is disposed"));
@@ -292,7 +295,8 @@ export class SparkNativeRenderer {
           else this.renderer.getDrawingBufferSize(this.owner.renderSize);
         };
         readSize();
-        if (visible)
+        // update false: niente generazione nuova per questa camera (crop/lente)
+        if (visible && update)
           await this.owner.onBeforeRender(this.renderer, scene, snapshot);
         this.assertSupported(scene, snapshot);
         const key = target ? "targetComposite" : "composite";
@@ -424,6 +428,9 @@ export class SparkNativeRenderer {
     uniforms.near.value = typed.near;
     uniforms.far.value = typed.far;
     const transform = camera.matrixWorld.clone().invert();
+    uniforms.highlightViewCenter.value
+      .copy(uniforms.highlightCenter.value)
+      .applyMatrix4(transform);
     if (!owner.display.extSplats)
       transform.multiply(
         new THREE.Matrix4().makeTranslation(owner.display.viewOrigin),

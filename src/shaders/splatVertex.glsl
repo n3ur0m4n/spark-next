@@ -45,6 +45,11 @@ uniform float clipXY;
 uniform float focalAdjustment;
 uniform bool stochastic;
 uniform int instanceCount;
+// Highlight sferico (centro in mondo): rgb verso highlightColor.rgb con intensità highlightColor.a
+// al centro, rampa lineare a 0 sul raggio. highlightRadius 0 = spento.
+uniform vec3 highlightCenter;
+uniform vec4 highlightColor;
+uniform float highlightRadius;
 
 uniform usampler2D ordering;
 uniform usampler2DArray extSplats;
@@ -159,6 +164,11 @@ void main() {
     float clip = clipXY * clipCenter.w;
     if (abs(clipCenter.x) > clip || abs(clipCenter.y) > clip) {
         return;
+    }
+
+    if (highlightRadius > 0.0) {
+        float hlDist = length(viewCenter - (viewMatrix * vec4(highlightCenter, 1.0)).xyz);
+        rgba.rgb = mix(rgba.rgb, highlightColor.rgb, highlightColor.a * clamp(1.0 - hlDist / highlightRadius, 0.0, 1.0));
     }
 
     vRgba = rgba;

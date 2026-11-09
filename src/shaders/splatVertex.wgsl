@@ -37,10 +37,14 @@ struct SparkUniforms {
     clipXY: f32,
     focalAdjustment: f32,
     isOrthographic: u32,    // bool as u32 for uniform buffer
-    _padding: vec3f,
+    highlightCenter: vec3f, // highlight sferico: centro in view space
     lodInflate: u32,
-    _padding2: vec4f,
+    highlightColor: vec4f,  // rgb + intensità al centro
     splatEncoding: vec4f,  // rgbMin, rgbMax, lnScaleMin, lnScaleMax
+    highlightRadius: f32,   // 0 = spento
+    _padding3: f32,
+    _padding4: f32,
+    _padding5: f32,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: SparkUniforms;
@@ -222,6 +226,20 @@ fn vs_main(input: VertexInput) -> VertexOutput {
         }
     }
 
+    // Compute the view space center of the splat
+    var viewCenter: vec3f;
+    if (uniforms.enableCovSplats == 0u) {
+        viewCenter = quatVec(uniforms.renderToViewQuat, center) + uniforms.renderToViewPos;
+    } else {
+        viewCenter = (uniforms.renderToViewBasis * center) + uniforms.renderToViewPos;
+    }
+
+    // Highlight sferico prima della conversione lineare (stesso spazio colore del GLSL)
+    if (uniforms.highlightRadius > 0.0) {
+        let hlDist = length(viewCenter - uniforms.highlightCenter);
+        rgba = vec4f(mix(rgba.rgb, uniforms.highlightColor.rgb, uniforms.highlightColor.a * clamp(1.0 - hlDist / uniforms.highlightRadius, 0.0, 1.0)), rgba.a);
+    }
+
     rgba = vec4f(max(rgba.rgb, vec3f(0.0)), rgba.a);
     // RGB is constant across the quad: convert once per splat, not per fragment.
     if (colorUniforms.encodeLinear != 0u) {
@@ -238,14 +256,6 @@ fn vs_main(input: VertexInput) -> VertexOutput {
         }
         // Expand the maximum std dev to approximately cover the larger range
         adjustedStdDevLocal = uniforms.maxStdDev + 0.7 * (rgba.a - 1.0);
-    }
-
-    // Compute the view space center of the splat
-    var viewCenter: vec3f;
-    if (uniforms.enableCovSplats == 0u) {
-        viewCenter = quatVec(uniforms.renderToViewQuat, center) + uniforms.renderToViewPos;
-    } else {
-        viewCenter = (uniforms.renderToViewBasis * center) + uniforms.renderToViewPos;
     }
 
     // Discard splats behind the camera
