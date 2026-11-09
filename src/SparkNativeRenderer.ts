@@ -384,22 +384,22 @@ export class SparkNativeRenderer {
       crop.w,
       crop.h,
     );
-    const task = this.queue
-      .catch(() => {})
-      .then(() => {
-        if (this.disposed) throw new Error("SparkRenderer is disposed");
-        this.updateUniforms(pickCamera, { width: crop.w, height: crop.h });
-        return this.backend.readPickPixels({
-          width: crop.w,
-          height: crop.h,
-          numInstances: this.renderVisible ? this.owner.activeSplats : 0,
-          alphaThreshold: crop.alphaThreshold,
-          farBig: crop.farBig,
-          solid: crop.solid,
-        });
+    let result: Promise<WebGPUPickPixels> | undefined;
+    const submitted = this.queue.catch(() => {}).then(() => {
+      if (this.disposed) throw new Error("SparkRenderer is disposed");
+      this.updateUniforms(pickCamera, { width: crop.w, height: crop.h });
+      // readPickPixels è sincrono fino a device.queue.submit: la coda si libera col submit, il readback resta fuori catena
+      result = this.backend.readPickPixels({
+        width: crop.w,
+        height: crop.h,
+        numInstances: this.renderVisible ? this.owner.activeSplats : 0,
+        alphaThreshold: crop.alphaThreshold,
+        farBig: crop.farBig,
+        solid: crop.solid,
       });
-    this.queue = task.then(() => {});
-    return task;
+    });
+    this.queue = submitted;
+    return submitted.then(() => result!);
   }
 
   /** sRGB splat blending (WebGPUComposite srgbBlend): needs an sRGB output. */
