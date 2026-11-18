@@ -19,10 +19,7 @@ export class SplatWorker {
   constructor() {
     this.worker = new BundledWorker();
     this.worker.onmessage = (event) => this.onMessage(event);
-    // Diagnostica [lod-diag]: il worker termina/crasha senza nemmeno postare un errore RPC
-    // (es. OOM) — altrimenti le promise in sospeso resterebbero pending per sempre.
     this.worker.onerror = (event) => {
-      console.warn("[lod-diag] Worker crashed:", event.message);
       const messages = Object.values(this.messages);
       this.messages = {};
       for (const message of messages) {

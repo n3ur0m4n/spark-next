@@ -251,6 +251,24 @@ export declare class WebGPUSplatBackend {
         falloff: {
             value: number;
         };
+        highlightViewCenter: {
+            value: {
+                x: number;
+                y: number;
+                z: number;
+            };
+        };
+        highlightColor: {
+            value: {
+                x: number;
+                y: number;
+                z: number;
+                w: number;
+            };
+        };
+        highlightRadius: {
+            value: number;
+        };
     }, projectionMatrix: {
         elements: number[];
     }, isOrthographic: boolean, target?: UniformBuffers): void;

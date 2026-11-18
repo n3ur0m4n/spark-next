@@ -46,8 +46,9 @@ export declare class SparkNativeRenderer {
      * image (same tone mapping) as linear premultiplied color. It has its own
      * intermediate target so captures do not resize the canvas one.
      */
-    renderAsync(scene: THREE.Scene, camera: THREE.Camera, { target }?: {
+    renderAsync(scene: THREE.Scene, camera: THREE.Camera, { target, update, }?: {
         target?: THREE.RenderTarget | null;
+        update?: boolean;
     }): Promise<void>;
     /**
      * pickAsync() render: the w x h CSS-pixel crop at (ox, oy) of the

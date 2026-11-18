@@ -665,6 +665,18 @@ export declare class SparkRenderer<R extends SparkHostRenderer = THREE.WebGLRend
         instanceCount: {
             value: number;
         };
+        highlightCenter: {
+            value: THREE.Vector3;
+        };
+        highlightColor: {
+            value: THREE.Vector4;
+        };
+        highlightRadius: {
+            value: number;
+        };
+        highlightViewCenter: {
+            value: THREE.Vector3;
+        };
     };
     dispose(): void;
     private dropErrorIfDisposed;
@@ -706,9 +718,14 @@ export declare class SparkRenderer<R extends SparkHostRenderer = THREE.WebGLRend
      * its existing background updates. Neither route waits for GPU completion.
      * `target` renders the full composite (Three.js objects and splats, with
      * depth) into that render target instead of the canvas.
+     * `update: false` (native WebGPU) draws the last committed generation with
+     * no LoD/sort update for this camera: for crops of the current view (e.g. a
+     * magnifier), whose camera and small renderSize would otherwise replace the
+     * canvas generation with a coarser LoD selection.
      */
-    renderAsync(scene: THREE.Scene, camera: THREE.Camera, { target }?: {
+    renderAsync(scene: THREE.Scene, camera: THREE.Camera, { target, update, }?: {
         target?: THREE.RenderTarget | null;
+        update?: boolean;
     }): Promise<void>;
     render(scene: THREE.Scene, camera: THREE.Camera): void;
     renderTarget({ scene, camera, }: {

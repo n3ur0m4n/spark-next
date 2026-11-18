@@ -31,18 +31,6 @@ import * as dyno from "./dyno";
 import { decodeExtSplat, unpackSplat, uploadU32DataTextureRows } from "./utils";
 import * as wasm from "./wasm";
 
-// Diagnostica [lod-diag] per il caricamento dei chunk .ssog paged (vedi fetchDecodeChunk sotto);
-// cap a 2000 righe totali per non intasare il log su caricamenti molto lunghi.
-let lodDiagLineCount = 0;
-function lodDiagLine(
-  label: string,
-  chunk: number,
-  data?: Record<string, unknown>,
-) {
-  if (lodDiagLineCount++ >= 2000) return;
-  console.warn("[lod-diag]", label, "chunk", chunk, data ?? "");
-}
-
 /**
  * Options for constructing {@link PagedSplats}. At least one source needs to be provided.
  * When multiple sources are given, only one takes effect. Order of precedence:
@@ -348,11 +336,6 @@ export class PagedSplats implements SplatSource {
   }
 
   async fetchDecodeChunk(chunk: number) {
-    // Diagnostica [lod-diag]: fetch/decodifica di ogni chunk pagina (vedi desktop.log), per capire
-    // dove si blocca la pipeline sui .ssog paged (stallo sul grezzo, caricamento a blocchi che poi
-    // si ferma). Non throttled: un chunk fermo in fetch o decode senza mai loggare "end" è il sintomo.
-    lodDiagLine("fetch start", chunk);
-    const fetchStart = performance.now();
     let decodeBytes: Uint8Array | undefined = undefined;
     const sogs = this.lodMetaPromise
       ? await this.fetchSogsFiles(chunk)
@@ -390,29 +373,7 @@ export class PagedSplats implements SplatSource {
       );
     }
 
-    const fetchBytes = sogs
-      ? sogs.meta.length + sogs.files.reduce((n, f) => n + f.length, 0)
-      : (decodeBytes?.length ?? 0);
-    lodDiagLine("fetch end", chunk, {
-      ms: Math.round(performance.now() - fetchStart),
-      bytes: fetchBytes,
-    });
-
-    lodDiagLine("decode start", chunk);
-    const decodeStart = performance.now();
-    try {
-      const decodeResult = await this.decodeChunk(chunk, sogs, decodeBytes);
-      lodDiagLine("decode end", chunk, {
-        ms: Math.round(performance.now() - decodeStart),
-      });
-      return decodeResult;
-    } catch (error) {
-      lodDiagLine("decode error", chunk, {
-        ms: Math.round(performance.now() - decodeStart),
-        error: String(error),
-      });
-      throw error;
-    }
+    return await this.decodeChunk(chunk, sogs, decodeBytes);
   }
 
   private async decodeChunk(
